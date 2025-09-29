@@ -161,7 +161,11 @@ bool WiFiUdpDriver::write_data()
 
     _write_mutex.take_blocking();
     struct sockaddr_in dest_addr;
+#ifdef UDP_TARGET_IP
+    dest_addr.sin_addr.s_addr = inet_addr(UDP_TARGET_IP);
+#else
     dest_addr.sin_addr.s_addr = inet_addr("192.168.4.255");
+#endif
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(UDP_PORT);
     int count = _writebuf.peekbytes(_buffer, sizeof(_buffer));
@@ -198,14 +202,25 @@ static void _sta_event_handler(void* arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < ESP_STATION_MAXIMUM_RETRY) {
+#ifdef WIFI_RECONNECT_DELAY_MS
+            vTaskDelay(pdMS_TO_TICKS(WIFI_RECONNECT_DELAY_MS));  // Wait before retry
+#endif
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(TAG, "retry to connect to the AP");
+            ESP_LOGI(TAG, "retry to connect to the AP (attempt %d/%d)", s_retry_num, ESP_STATION_MAXIMUM_RETRY);
         } else {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            // Reset retry counter and keep trying indefinitely for stability
+            s_retry_num = 0;
+            ESP_LOGI(TAG, "Max retries reached, resetting counter and continuing...");
+#ifdef WIFI_RECONNECT_DELAY_MS
+            vTaskDelay(pdMS_TO_TICKS(WIFI_RECONNECT_DELAY_MS * 5));  // Longer delay before reset
+#endif
+            esp_wifi_connect();
         }
-        ESP_LOGI(TAG,"connect to the AP fail");
+        ESP_LOGI(TAG,"WiFi disconnected, attempting reconnection");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -303,7 +318,16 @@ void WiFiUdpDriver::initialize_wifi()
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
+
+    // WiFi Stability Improvements
+#ifdef WIFI_POWER_SAVE_NONE
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));  // Disable power saving for stability
+#endif
+
     ESP_ERROR_CHECK(esp_wifi_start() );
+
+    // Set WiFi to maintain connection more aggressively (must be after esp_wifi_start)
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(78));  // Set max TX power (19.5 dBm)
 
     hal.console->printf("WiFi Station init finished. Connecting:\n");
 

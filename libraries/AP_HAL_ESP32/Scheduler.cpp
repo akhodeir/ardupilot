@@ -106,7 +106,7 @@ void Scheduler::init()
        hal.console->printf("OK created task _rcin_thread on SLOWCPU\n");
     }
 
-    // pin this thread to Core 1 as it keeps all teh uart/s feed data, and we need that quick.
+    // pin this thread to Core 0 as it keeps all the uart/s feed data, and we need that quick.
     if (xTaskCreatePinnedToCore(_uart_thread, "APM_UART", UART_SS, this, UART_PRIO, &_uart_task_handle,FASTCPU) != pdPASS) {
         hal.console->printf("FAILED to create task _uart_thread on FASTCPU\n");
     } else {

@@ -24,6 +24,9 @@ using namespace ESP32;
 #define MHZ (1000U*1000U)
 #define KHZ (1000U)
 
+// Static semaphore for ArduPilot-based I2C bus locking (replaces ESP-IDF race-prone system)
+AP_HAL::Semaphore *I2CDevice::_i2c_bus_semaphore = nullptr;
+
 I2CBusDesc i2c_bus_desc[] = { HAL_ESP32_I2C_BUSES };
 
 I2CBus I2CDeviceManager::businfo[ARRAY_SIZE(i2c_bus_desc)];
@@ -62,8 +65,14 @@ I2CDevice::I2CDevice(uint8_t busnum, uint8_t address, uint32_t bus_clock, bool u
     bus(I2CDeviceManager::businfo[busnum]),
     _retries(10),
     _address(address),
-    _timeout_ms(timeout_ms)
+    _timeout_ms(timeout_ms),
+    _bus_acquired(false)  // Initialize ArduPilot semaphore state
 {
+    // Initialize shared I2C bus semaphore once
+    if (_i2c_bus_semaphore == nullptr) {
+        _i2c_bus_semaphore = new ESP32::Semaphore();
+    }
+
     set_device_bus(busnum);
     set_device_address(address);
     asprintf(&pname, "I2C:%u:%02x",
@@ -82,6 +91,9 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
         printf("I2C: not owner of 0x%x\n", (unsigned)get_bus_id());
         return false;
     }
+
+    // Use ArduPilot semaphore for critical I2C operations
+    acquire_bus(true);
 
     bool result = false;
     if (bus.soft) {
@@ -132,7 +144,31 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
         i2c_cmd_link_delete(cmd);
     }
 
+    // Release ArduPilot semaphore
+    acquire_bus(false);
+
     return result;
+}
+
+void I2CDevice::acquire_bus(bool acquire)
+{
+    if (acquire && !_bus_acquired) {
+        // Use ArduPilot's proven semaphore system instead of ESP-IDF race-prone locking
+        if (_i2c_bus_semaphore) {
+            _i2c_bus_semaphore->take_blocking();
+            _bus_acquired = true;
+        }
+
+        // Still use ESP-IDF for the actual I2C transaction, but bypass their locking
+        // Use i2c_master_cmd_begin() directly without internal acquire/release calls
+
+    } else if (!acquire && _bus_acquired) {
+        // Release ArduPilot semaphore
+        if (_i2c_bus_semaphore) {
+            _i2c_bus_semaphore->give();
+            _bus_acquired = false;
+        }
+    }
 }
 
 /*

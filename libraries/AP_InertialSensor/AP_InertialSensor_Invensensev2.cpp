@@ -117,7 +117,11 @@ AP_InertialSensor_Backend *AP_InertialSensor_Invensensev2::probe(AP_InertialSens
     dev->set_read_flag(0x80);
 
     sensor = NEW_NOTHROW AP_InertialSensor_Invensensev2(imu, std::move(dev), rotation);
-    if (!sensor || !sensor->_init()) {
+    if (!sensor) {
+        return nullptr;
+    }
+
+    if (!sensor->_init()) {
         delete sensor;
         return nullptr;
     }
@@ -133,9 +137,7 @@ bool AP_InertialSensor_Invensensev2::_init()
     _drdy_pin->mode(HAL_GPIO_INPUT);
 #endif
 
-    bool success = _hardware_init();
-
-    return success;
+    return _hardware_init();
 }
 
 void AP_InertialSensor_Invensensev2::_fifo_reset()
@@ -244,7 +246,7 @@ void AP_InertialSensor_Invensensev2::start()
     // setup scale factors for fifo data after downsampling
     _fifo_accel_scale = _accel_scale / _accel_fifo_downsample_rate;
     _fifo_gyro_scale = GYRO_SCALE / _gyro_fifo_downsample_rate;
-    
+
     // allocate fifo buffer
     _fifo_buffer = (uint8_t *)hal.util->malloc_type(INV2_FIFO_BUFFER_LEN * INV2_SAMPLE_SIZE, AP_HAL::Util::MEM_DMA_SAFE);
     if (_fifo_buffer == nullptr) {

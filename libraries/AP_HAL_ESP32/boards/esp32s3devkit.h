@@ -43,7 +43,7 @@
 //#define HAL_BOARD_ESP32 12
 #define AP_INERTIALSENSOR_ENABLED 1
 //INS choices:
-#define HAL_INS_DEFAULT HAL_INS_MPU9250_SPI
+    #define HAL_INS_DEFAULT HAL_INS_MPU9250_SPI
 //#define HAL_INS_MPU9250_NAME "MPU9250"
 
 // or this:
@@ -52,7 +52,7 @@
 //#define HAL_INS_ICM20XXX_I2C_ADDR (0x68)
 
 // MAG/COMPASS choices:
-#define HAL_COMPASS_DEFAULT HAL_COMPASS_AK8963_MPU9250
+    #define HAL_COMPASS_DEFAULT HAL_COMPASS_AK8963_MPU9250
 // or others:
 //#define HAL_COMPASS_ICM20948_I2C_ADDR (0x68)
 //#define HAL_COMPASS_AK09916_I2C_BUS 0
@@ -106,15 +106,70 @@
 
 #define HAL_INS_PROBE_LIST PROBE_IMU_SPI( Invensense, HAL_INS_MPU9250_NAME, ROTATION_NONE)
 //#define HAL_INS_PROBE_LIST PROBE_IMU_SPI( Invensense, HAL_INS_MPU9250_NAME, ROTATION_ROLL_180)
-// MAG/COMPASS probing:
-#define AP_COMPASS_AK8963_ENABLED TRUE
-#define HAL_MAG_PROBE_LIST ADD_BACKEND(DRIVER_AK8963, AP_Compass_AK8963::probe_mpu9250(0, ROTATION_NONE))
+    // MAG/COMPASS probing:
+    #define AP_COMPASS_AK8963_ENABLED TRUE
+    #define HAL_MAG_PROBE_LIST ADD_BACKEND(DRIVER_AK8963, AP_Compass_AK8963::probe_mpu9250(0, ROTATION_NONE))
 #define HAL_PROBE_EXTERNAL_I2C_COMPASSES 1
 
 //#define HAL_BARO_PROBE_LIST PROBE_BARO_SPI(BMP280, "bmp280")
 
-// 2 use udp, 1 use tcp...  for udp,client needs to connect as UDPCL in missionplanner etc to 192.168.4.1 port 14550
-#define HAL_ESP32_WIFI 1
+// WiFi Configuration - Re-enabled in Client Mode
+// Uncomment ONE of the following lines to select WiFi mode:
+//#define WIFI_MODE_CLIENT    1     // Connect to existing network as client
+#define WIFI_MODE_HOTSPOT   1     // Create hotspot/access point
+
+#ifdef WIFI_MODE_CLIENT
+    // Client Mode Configuration (connect to existing network)
+    #define HAL_ESP32_WIFI 2
+    #define WIFI_STATION 1
+    #define WIFI_SSID_STATION "NETWORK_NAME"     // Replace with your WiFi network name
+    #define WIFI_PWD "PASSWORD"           // Replace with your WiFi password
+    #define WIFI_HOSTNAME "ArduPilotESP32"             // Hostname on your network
+    #define UDP_TARGET_IP "192.168.178.20"             // Replace with your ground station IP
+
+    // WiFi Stability Settings
+    #define WIFI_POWER_SAVE_NONE 1              // Disable power saving for stability
+    #define WIFI_RETRY_ATTEMPTS 10              // Max connection retry attempts
+    #define WIFI_RECONNECT_DELAY_MS 1000        // Delay between reconnection attempts
+    #define WIFI_KEEPALIVE_INTERVAL_MS 30000    // Send keepalive every 30 seconds
+
+    // WiFi Debug Settings
+    #define WIFI_DEBUG_ENABLED 1                // Enable detailed WiFi logging
+    #define WIFI_CONNECTION_TIMEOUT_MS 30000    // 30 second connection timeout
+
+    // Ground Station Connection:
+    // - Connect to same WiFi network as ESP32
+    // - Use UDP connection to ESP32's assigned IP:14550
+    // - ESP32 will send MAVLink to UDP_TARGET_IP:14550
+
+    // Legacy defines (not used in client mode)
+    #define WIFI_SSID "YOUR_NETWORK_NAME"
+
+#elif defined(WIFI_MODE_HOTSPOT)
+    // Hotspot Mode Configuration (create access point)
+    #define HAL_ESP32_WIFI 2
+    // WIFI_STATION is not defined (defaults to AP mode)
+    #define WIFI_SSID "ardupilot123"                   // Hotspot network name
+    #define WIFI_PWD "ardupilot123"                    // Hotspot password
+    #define WIFI_HOSTNAME "ArduPilotESP32"             // Device hostname
+
+    // Ground Station Connection:
+    // - Connect to WiFi network "ardupilot123"
+    // - Use UDPCL connection to 192.168.4.1:14550
+    // - ESP32 broadcasts MAVLink to 192.168.4.255:14550
+
+#else
+    // WiFi client mode enabled - no error
+    //#error "Must define either WIFI_MODE_CLIENT or WIFI_MODE_HOTSPOT"
+#endif
+
+// NOTE: For client mode UDP_TARGET_IP support, modify WiFiUdpDriver.cpp:164
+// Change: dest_addr.sin_addr.s_addr = inet_addr("192.168.4.255");
+// To:     #ifdef UDP_TARGET_IP
+//             dest_addr.sin_addr.s_addr = inet_addr(UDP_TARGET_IP);
+//         #else
+//             dest_addr.sin_addr.s_addr = inet_addr("192.168.4.255");
+//         #endif
 
 // tip: if u are ok getting mavlink-over-tcp or mavlink-over-udp and want to disable mavlink-over-serial-usb
 //then set ardupilot parameter SERIAL0_PROTOCOL = 0 and reboot.
@@ -124,12 +179,12 @@
 //SERIAL0_PROTOCOL 0
 
 
-#define WIFI_SSID "ardupilot123"
-#define WIFI_PWD "ardupilot123"
+// WiFi credentials (see configuration above)
+// Values are set based on selected WiFi mode
 
 //RCOUT which pins are used?
 
-#define HAL_ESP32_RCOUT { GPIO_NUM_11,GPIO_NUM_10, GPIO_NUM_9, GPIO_NUM_8, GPIO_NUM_7, GPIO_NUM_6 }
+#define HAL_ESP32_RCOUT { GPIO_NUM_1, GPIO_NUM_2, GPIO_NUM_9, GPIO_NUM_8, GPIO_NUM_7, GPIO_NUM_6 }
 
 // SPI BUS setup, including gpio, dma, etc
 // note... we use 'vspi' for the bmp280 and mpu9250
@@ -139,7 +194,7 @@
 //#define HAL_ESP32_SPI_BUSES {}
 
 // SPI per-device setup, including speeds, etc.
-#define HAL_ESP32_SPI_DEVICES \
+    #define HAL_ESP32_SPI_DEVICES \
     {.name="mpu9250", .bus=0, .device=0, .cs=GPIO_NUM_34,  .mode = 0, .lspeed=2*MHZ, .hspeed=8*MHZ}
 //#define HAL_ESP32_SPI_DEVICES {}
 

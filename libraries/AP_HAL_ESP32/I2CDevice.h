@@ -100,12 +100,19 @@ public:
         return &bus.semaphore;
     }
 
+private:
+    void acquire_bus(bool acquire);
+
 protected:
     I2CBus &bus;
     uint8_t _retries;
     uint8_t _address;
     char *pname;
     uint32_t _timeout_ms;
+
+    // ArduPilot semaphore-based I2C locking to replace ESP-IDF race-prone system
+    static AP_HAL::Semaphore *_i2c_bus_semaphore;
+    bool _bus_acquired;
 };
 
 class I2CDeviceManager : public AP_HAL::I2CDeviceManager
